@@ -1,7 +1,8 @@
 # Script for Automatic iTrade (Samp-Rp)
 
-<img
-  src="https://gist.github.com/user-attachments/assets/5925859c-d722-4cfe-a672-b317c52b4ee3" width="400" style="display: block; margin: 0 auto" alt="Auto trade">
+<div align="center">
+  <img src="assets/images/sa-mp-065.png" alt="Auto trade" width="400">
+</div>
 
 ## Description
 
