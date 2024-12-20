@@ -1,12 +1,20 @@
 # Script for Automatic iTrade (Samp-Rp)
 
-<div align="center">
-  <img src="assets/images/sa-mp-065.png" alt="Auto trade" width="400">
-</div>
+[![Download](assets/images/download.png)](auto_trade.lua)
+
+# [**Download**](auto_trade.lua)
+
+Move the file `auto_trade.lua` to the `moonloader` folder.
+
+<br>
 
 ## Description
 
 This script was created to automate the process of item trading between players. It allows trades to be executed automatically based on the parameters specified by the player, without requiring any manual actions.
+
+<div align="center">
+  <img src="assets/images/sa-mp-065.png" alt="Auto trade" width="400">
+</div>
 
 ## Instruction
 
@@ -19,6 +27,4 @@ Trade values - these are the values set for trading with a player. To input your
 
 ## Activation
 
-To activate the script, enter the following command in the chat. Set the parameter values, then close the window, and the script will start working.
-
-> /atrade
+### **/atrade**
