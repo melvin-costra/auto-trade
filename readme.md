@@ -1,29 +1,35 @@
-# Script for Automatic iTrade (Samp-Rp)
+# Скрипт для автоматического трейда (Samp-Rp)
+
+[![Download](assets/images/download.png)](auto_trade.lua)
+
+## [**Скачать**](auto_trade.lua)
+
+Перенесите файл `auto_trade.lua` в папку `moonloader`.
+
+<br>
 
 <div align="center">
-  <img src="assets/images/sa-mp-066.png" alt="Auto trade" width="400">
+  <img src="assets/images/sa-mp-067.png" alt="Auto trade" width="400">
 </div>
 
-## Description
+## Описание
 
-This script was created to automate the process of item trading between players. It allows trades to be executed automatically based on the parameters specified by the player, without requiring any manual actions.
+Этот скрипт был создан для автоматизации процесса обмена предметами между игроками во время трейда (/itrade). Он позволяет мгновенно выполнять обмен предметами на основе параметров, заданных игроком, без необходимости ручного вмешательства. Также, есть возможность для автоматического принятия трейда (**Auto press accept**) для игрока который получает предметы.
 
-## Instruction
+## Инструкция
 
-- **Turn on** - activates the script for transferring items.
+- **Turn on** - Активирует автоматическую передачу предметов во время трейда.
 
-- **Accept trade request** - enables automatic acceptance of a trade when someone offers one.
+- **Accept trade request** - Автоматическое принятие трейда (/accept invtrade) когда видит сообщение в чате.
 
-- **Auto press accept** - automatically confirms the trade (clicking the "accept" button).
+- **Auto press accept** - Автоматически соглашается на обмен (кнопка accept). Во время **передачи** предметов кнопка accept будет нажиматься после того как все предметы были добавлены для обмена. Во время **принятия** предметов - после того как другой игрок согласился на обмен.
 
-- **LMB + Q** - Sends the trade offer to the player in the target.
+- **LMB + Q** - Отправляет предложения трейда игроку который находиться в прицеле (когда есть зелёная стрелка над игроком).
 
-- **Trade values** - these are the values set for trading with a player. To input your own value, press Ctrl + LMB on the slider.
+- **Trade values** - Значения которые нужно передавать во время трейда. Для указания собственного значения нужно нажать **CTRL + ЛКМ** по ползунку.
 
-- **Limits** - allows you to set a minimum quantity below which items cannot be traded. For example, if you have 60 Deagle ammo, you set 20 for trading, but the limit is 50, the trade will only send 10 units (60 - 50 = 10).
+- **Limits** - Позволяет указывать лимиты (минимальные значения) за которые нельзя выходить. Например, если для *Дигла* указан лимит 50 патронов, для передачи указано 35, а у вас при этом осталось 60 патронов то во время трейда игроку передастся только 10 патронов. Если же лимит был достигнут либо вовсе превышает текущее количество патронов, предмет передаваться не будет.
 
-## Activation
+## Активация
 
-To activate the script, enter the following command in the chat. Set the parameter values, then close the window, and the script will start working.
-
-> /atrade
+### /atrade

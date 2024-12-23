@@ -1,6 +1,6 @@
 script_author("Melvin Costra")
 script_name("Auto trade")
-script_description("This script was created to automate the process of item trading between players. It allows trades to be executed automatically based on the parameters specified by the player, without requiring any manual actions.")
+script_description("Этот скрипт был создан для автоматизации процесса обмена предметами между игроками во время трейда (/itrade). Он позволяет мгновенно выполнять обмен предметами на основе параметров, заданных игроком, без необходимости ручного вмешательства.")
 script_version("v0.2.0")
 script_url("https://github.com/melvin-costra/auto-trade.git")
 
@@ -26,6 +26,7 @@ local cfg = {
         { id = 1575, name = "drugs", amount = 50, limit = 50, isSelected = false },
         { id = 348, name = "deagle", amount = 50, limit = 50, isSelected = false },
         { id = 349, name = "shotgun", amount = 40, limit = 35, isSelected = false },
+        { id = 353, name = "smg", amount = 150, limit = 150, isSelected = false },
         { id = 355, name = "ak47", amount = 200, limit = 200, isSelected = false },
         { id = 356, name = "m4", amount = 200, limit = 200, isSelected = false },
         { id = 357, name = "rifle", amount = 50, limit = 50, isSelected = false }
@@ -60,6 +61,25 @@ local slots_inventory = {
     { 424.5, 287 },
 }
 
+function checkSavedCFG(savedCFG)
+    if savedCFG.items == nil or savedCFG.settings == nil or #savedCFG.items ~= #cfg.items then
+        return false
+    end
+    local count1, count2 = 0, 0
+    for key in pairs(cfg.settings) do
+        if savedCFG.settings[key] == nil then
+            return false
+        end
+        count1 = count1 + 1
+    end
+
+    for key in pairs(savedCFG.settings) do
+        count2 = count2 + 1
+    end
+
+    return count1 == count2
+end
+
 function saveCFG(table, path)
     local save = io.open(path, "w")
     if save then
@@ -75,14 +95,16 @@ function main()
     if not doesDirectoryExist('moonloader/config') then createDirectory("moonloader/config") end
 
     if not doesFileExist(CONFIG_PATH) then
-        io.open(CONFIG_PATH, 'w'):close()
+        saveCFG(cfg, CONFIG_PATH)
     else
         local file = io.open(CONFIG_PATH, 'r')
         if file then
-            cfg = decodeJson(file:read('*a'))
+            local fileCFG = decodeJson(file:read('*a'))
+            if checkSavedCFG(fileCFG) then
+                cfg = fileCFG
+            end
         end
     end
-    saveCFG(cfg, CONFIG_PATH)
 
     apply_custom_style()
     sampRegisterChatCommand("atrade", function()
@@ -179,23 +201,26 @@ function imgui.OnDrawFrame()
     checkbox_drugs =        imgui.ImBool(cfg.items[1].isSelected)
     checkbox_deagle =       imgui.ImBool(cfg.items[2].isSelected)
     checkbox_shotgun =      imgui.ImBool(cfg.items[3].isSelected)
-    checkbox_ak47 =         imgui.ImBool(cfg.items[4].isSelected)
-    checkbox_m4 =           imgui.ImBool(cfg.items[5].isSelected)
-    checkbox_rifle =        imgui.ImBool(cfg.items[6].isSelected)
+    checkbox_smg =          imgui.ImBool(cfg.items[4].isSelected)
+    checkbox_ak47 =         imgui.ImBool(cfg.items[5].isSelected)
+    checkbox_m4 =           imgui.ImBool(cfg.items[6].isSelected)
+    checkbox_rifle =        imgui.ImBool(cfg.items[7].isSelected)
 
     drugs_amount =          imgui.ImInt(cfg.items[1].amount)
     deagle_amount =         imgui.ImInt(cfg.items[2].amount)
     shotgun_amount =        imgui.ImInt(cfg.items[3].amount)
-    ak47_amount =           imgui.ImInt(cfg.items[4].amount)
-    m4_amount =             imgui.ImInt(cfg.items[5].amount)
-    rifle_amount =          imgui.ImInt(cfg.items[6].amount)
+    smg_amount =            imgui.ImInt(cfg.items[4].amount)
+    ak47_amount =           imgui.ImInt(cfg.items[5].amount)
+    m4_amount =             imgui.ImInt(cfg.items[6].amount)
+    rifle_amount =          imgui.ImInt(cfg.items[7].amount)
 
     drugs_limit =           imgui.ImInt(cfg.items[1].limit)
     deagle_limit =          imgui.ImInt(cfg.items[2].limit)
     shotgun_limit =         imgui.ImInt(cfg.items[3].limit)
-    ak47_limit =            imgui.ImInt(cfg.items[4].limit)
-    m4_limit =              imgui.ImInt(cfg.items[5].limit)
-    rifle_limit =           imgui.ImInt(cfg.items[6].limit)
+    smg_limit =             imgui.ImInt(cfg.items[4].limit)
+    ak47_limit =            imgui.ImInt(cfg.items[5].limit)
+    m4_limit =              imgui.ImInt(cfg.items[6].limit)
+    rifle_limit =           imgui.ImInt(cfg.items[7].limit)
 
 
     imgui.SetNextWindowPos(imgui.ImVec2(sw / 2, sh / 2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
@@ -230,19 +255,24 @@ function imgui.OnDrawFrame()
     if imgui.SliderInt(u8"pt. ", shotgun_amount, 20, 100) then cfg.items[3].amount = shotgun_amount.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
-    if imgui.Checkbox("AK47", checkbox_ak47) then cfg.items[4].isSelected = checkbox_ak47.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.Checkbox("SMG", checkbox_smg) then cfg.items[4].isSelected = checkbox_smg.v saveCFG(cfg, CONFIG_PATH) end
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.   ", ak47_amount, 50, 400) then cfg.items[4].amount = ak47_amount.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt(u8"pt.  ", smg_amount, 30, 400) then cfg.items[4].amount = smg_amount.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
-    if imgui.Checkbox("M4", checkbox_m4) then cfg.items[5].isSelected = checkbox_m4.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.Checkbox("AK47", checkbox_ak47) then cfg.items[5].isSelected = checkbox_ak47.v saveCFG(cfg, CONFIG_PATH) end
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.  ", m4_amount, 50, 400) then cfg.items[5].amount = m4_amount.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt(u8"pt.   ", ak47_amount, 50, 400) then cfg.items[5].amount = ak47_amount.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
-    if imgui.Checkbox("Rifle", checkbox_rifle) then cfg.items[6].isSelected = checkbox_rifle.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.Checkbox("M4", checkbox_m4) then cfg.items[6].isSelected = checkbox_m4.v saveCFG(cfg, CONFIG_PATH) end
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.    ", rifle_amount, 10, 100) then cfg.items[6].amount = rifle_amount.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt(u8"pt.    ", m4_amount, 50, 400) then cfg.items[6].amount = m4_amount.v saveCFG(cfg, CONFIG_PATH) end
+    imgui.NewLine()
+
+    if imgui.Checkbox("Rifle", checkbox_rifle) then cfg.items[7].isSelected = checkbox_rifle.v saveCFG(cfg, CONFIG_PATH) end
+    imgui.SameLine(slider_pos_x)
+    if imgui.SliderInt(u8"pt.     ", rifle_amount, 10, 100) then cfg.items[7].amount = rifle_amount.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
     imgui.Separator()
@@ -257,27 +287,32 @@ function imgui.OnDrawFrame()
 
     imgui.Text("Deagle")
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.     ", deagle_limit, 0, 100) then cfg.items[2].limit = deagle_limit.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt(u8"pt.      ", deagle_limit, 0, 100) then cfg.items[2].limit = deagle_limit.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
     imgui.Text("Shotgun")
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.      ", shotgun_limit, 0, 100) then cfg.items[3].limit = shotgun_limit.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt(u8"pt.       ", shotgun_limit, 0, 100) then cfg.items[3].limit = shotgun_limit.v saveCFG(cfg, CONFIG_PATH) end
+    imgui.NewLine()
+
+    imgui.Text("SMG")
+    imgui.SameLine(slider_pos_x)
+    if imgui.SliderInt(u8"pt.        ", smg_limit, 0, 500) then cfg.items[4].limit = smg_limit.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
     imgui.Text("AK47")
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.       ", ak47_limit, 0, 500) then cfg.items[4].limit = ak47_limit.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt(u8"pt.         ", ak47_limit, 0, 500) then cfg.items[5].limit = ak47_limit.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
     imgui.Text("M4")
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.        ", m4_limit, 0, 500) then cfg.items[5].limit = m4_limit.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt(u8"pt.          ", m4_limit, 0, 500) then cfg.items[6].limit = m4_limit.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
     imgui.Text("Rifle")
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.         ", rifle_limit, 0, 100) then cfg.items[6].limit = rifle_limit.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt(u8"pt.           ", rifle_limit, 0, 100) then cfg.items[7].limit = rifle_limit.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
     imgui.End()
@@ -293,7 +328,7 @@ function ev.onServerMessage(c, text)
     if isSubmitInProgress and text:find("Обмен не может быть пустым") then
         isSubmitInProgress = false
     end
-    if cfg.settings.isActivated and cfg.settings.accept_trade_request and text:find("(.+) предложил вам обмен предметами .+") then
+    if cfg.settings.accept_trade_request and text:find("(.+) предложил вам обмен предметами .+") then
         sampSendChat("/accept invtrade")
     end
     if cfg.settings.auto_press_accept and text:find("(.+) согласился на обмен, нажмите accept для принятия") then
