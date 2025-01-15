@@ -15,11 +15,16 @@ local window = imgui.ImBool(false)
 local CONFIG_PATH = "moonloader/config/configAutoTrade.json"
 local isTradeInProgress = false
 local isSubmitInProgress = false
+local isNextPageInProgress = false
 local ammoValue = nil
 local itemsToTrade = {}
 local tradeItemToRemove = nil
 local inventoryTextDrawId = nil
 local acceptTextDrawId = nil
+local nextPageTextDrawId = nil
+local emptySlotId = 19478
+local darkSlotColor = 4280098087
+local lastInventoryItem = nil
 
 local cfg = {
     items = {
@@ -114,7 +119,9 @@ function main()
     while true do
         wait(0)
         imgui.Process = window.v
-        if isTradeInProgress then
+        if isNextPageInProgress then
+            switchToNextPage()
+        elseif isTradeInProgress then
             autoTrade()
         elseif isSubmitInProgress then
             sendSubmit()
@@ -142,6 +149,21 @@ function tradeInventoryItem(posX, posY)
             local dist = getDistanceBetweenCoords2d(x, y, posX, posY)
             if dist <= 0.3 then
                 local model = select(1, sampTextdrawGetModelRotationZoomVehColor(i))
+                if lastInventoryItem == nil and posX == slots_inventory[#slots_inventory][1] and posY == slots_inventory[#slots_inventory][2] then
+                    lastInventoryItem = { id = i, model = model}
+                end
+                local _, outlineColor = sampTextdrawGetOutlineColor(i)
+                if model == emptySlotId or outlineColor ~= darkSlotColor then
+                    local missing_items = ''
+                    for _, item in ipairs(itemsToTrade) do
+                        missing_items = missing_items .. item.name .. ' | '
+                    end
+                    if missing_items ~= '' then
+                        sampAddChatMessage('[AutoTrade]: Отсутствующие предметы:  {638ECB}' .. missing_items:sub(0, -4), -1)
+                    end
+                    itemsToTrade = {}
+                    return true
+                end
                 for k, item in ipairs(itemsToTrade) do
                     if model == item.id and sampTextdrawIsExists(i + 1) then
                         local itemAmount = tonumber(sampTextdrawGetString(i + 1):match("^(%d+)/?"))
@@ -165,6 +187,21 @@ function tradeInventoryItem(posX, posY)
     end
 end
 
+function switchToNextPage()
+    if nextPageTextDrawId and sampTextdrawIsExists(nextPageTextDrawId) then
+        sampSendClickTextdraw(nextPageTextDrawId)
+        local model = select(1, sampTextdrawGetModelRotationZoomVehColor(lastInventoryItem.id))
+        if not sampTextdrawIsExists(lastInventoryItem.id) or model ~= lastInventoryItem.model then
+            isNextPageInProgress = false
+            lastInventoryItem = nil
+            return
+        end
+    else
+        isNextPageInProgress = false
+        itemsToTrade = {}
+    end
+end
+
 function autoTrade()
     if #itemsToTrade > 0 then
         for i, slot in ipairs(slots_inventory) do
@@ -173,7 +210,9 @@ function autoTrade()
                 return
             end
         end
-        itemsToTrade = {}
+        if #itemsToTrade > 0 then
+            isNextPageInProgress = true
+        end
     else
         isTradeInProgress = false
         isSubmitInProgress = true
@@ -181,10 +220,11 @@ function autoTrade()
 end
 
 function sendSubmit()
-    if sampTextdrawIsExists(acceptTextDrawId) then
+    if acceptTextDrawId and sampTextdrawIsExists(acceptTextDrawId) then
         sampSendClickTextdraw(acceptTextDrawId)
     else
         acceptTextDrawId = nil
+        isSubmitInProgress = false
     end
 end
 
@@ -340,13 +380,16 @@ function ev.onShowTextDraw(id, data)
     if cfg.settings.isActivated and data.text:find("inventory") then
         inventoryTextDrawId = id
     end
-    if cfg.settings.auto_press_accept and data.text:find("accept") then
-        acceptTextDrawId = id
+    if cfg.settings.isActivated and data.text:find(">>>") then
+        nextPageTextDrawId = id
     end
     if cfg.settings.isActivated and data.text:find("accept") and inventoryTextDrawId then
+        if cfg.settings.auto_press_accept then
+            acceptTextDrawId = id
+        end
         for _, item in ipairs(cfg.items) do
             if item.isSelected then
-                table.insert(itemsToTrade, { id = item.id, amount = item.amount, limit = item.limit })
+                table.insert(itemsToTrade, { id = item.id, name = item.name, amount = item.amount, limit = item.limit })
             end
         end
         isTradeInProgress = true
