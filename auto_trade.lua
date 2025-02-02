@@ -19,12 +19,12 @@ local isNextPageInProgress = false
 local ammoValue = nil
 local itemsToTrade = {}
 local tradeItemToRemove = nil
-local inventoryTextDrawId = nil
 local acceptTextDrawId = nil
 local nextPageTextDrawId = nil
 local emptySlotId = 19478
 local darkSlotColor = 4280098087
 local lastInventoryItem = nil
+local isLastSlotChecked = false
 
 local cfg = {
     items = {
@@ -149,6 +149,9 @@ function tradeInventoryItem(posX, posY)
             local x, y = sampTextdrawGetPos(i)
             local dist = getDistanceBetweenCoords2d(x, y, posX, posY)
             if dist <= 0.3 then
+                if posX == slots_inventory[#slots_inventory][1] and posY == slots_inventory[#slots_inventory][2] then
+                    isLastSlotChecked = true
+                end
                 local model = select(1, sampTextdrawGetModelRotationZoomVehColor(i))
                 if lastInventoryItem == nil and posX == slots_inventory[#slots_inventory][1] and posY == slots_inventory[#slots_inventory][2] then
                     lastInventoryItem = { id = i, model = model}
@@ -206,14 +209,16 @@ end
 
 function autoTrade()
     if #itemsToTrade > 0 then
-        for i, slot in ipairs(slots_inventory) do
-            local x, y = slot[1], slot[2]
-            if tradeInventoryItem(x, y) then
-                return
-            end
-        end
-        if #itemsToTrade > 0 then
+        if isLastSlotChecked and #itemsToTrade > 0 then
             isNextPageInProgress = true
+            isLastSlotChecked = false
+        else
+            for i, slot in ipairs(slots_inventory) do
+                local x, y = slot[1], slot[2]
+                if tradeInventoryItem(x, y) then
+                    return
+                end
+            end
         end
     else
         isTradeInProgress = false
@@ -222,7 +227,7 @@ function autoTrade()
 end
 
 function sendSubmit()
-    if acceptTextDrawId and sampTextdrawIsExists(acceptTextDrawId) then
+    if cfg.settings.auto_press_accept and acceptTextDrawId and sampTextdrawIsExists(acceptTextDrawId) then
         sampSendClickTextdraw(acceptTextDrawId)
     else
         acceptTextDrawId = nil
@@ -233,7 +238,7 @@ end
 function imgui.OnDrawFrame()
     local sw, sh = getScreenResolution()
     local window_width = 440
-    local window_height = 400
+    local window_height = 500
     local slider_pos_x = window_width / 4
 
     checkbox_isActivated =           imgui.ImBool(cfg.settings.isActivated)
@@ -271,7 +276,7 @@ function imgui.OnDrawFrame()
     imgui.SetNextWindowPos(imgui.ImVec2(sw / 2, sh / 2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
     imgui.SetNextWindowSize(imgui.ImVec2(window_width, window_height), imgui.Cond.FirstUseEver)
 
-    imgui.Begin("Auto Trade", window, imgui.WindowFlags.NoResize + imgui.WindowFlags.NoCollapse)
+    imgui.Begin("Auto Trade", window, imgui.WindowFlags.NoResize + imgui.WindowFlags.NoCollapse + imgui.WindowFlags.NoMove)
 
     if imgui.Checkbox("Turn on", checkbox_isActivated) then cfg.settings.isActivated = checkbox_isActivated.v saveCFG(cfg, CONFIG_PATH) end
     imgui.SameLine(slider_pos_x)
@@ -392,22 +397,19 @@ function ev.onServerMessage(c, text)
 end
 
 function ev.onShowTextDraw(id, data)
-    if cfg.settings.isActivated and data.text:find("inventory") then
-        inventoryTextDrawId = id
-    end
-    if cfg.settings.isActivated and data.text:find(">>>") then
+    if data.text:find(">>>") then
         nextPageTextDrawId = id
     end
-    if cfg.settings.isActivated and data.text:find("accept") and inventoryTextDrawId then
-        if cfg.settings.auto_press_accept then
-            acceptTextDrawId = id
-        end
-        for _, item in ipairs(cfg.items) do
-            if item.isSelected then
-                table.insert(itemsToTrade, { id = item.id, name = item.name, amount = item.amount, limit = item.limit })
+    if data.text:find("accept") then
+        acceptTextDrawId = id
+        if cfg.settings.isActivated then
+            for _, item in ipairs(cfg.items) do
+                if item.isSelected then
+                    table.insert(itemsToTrade, { id = item.id, name = item.name, amount = item.amount, limit = item.limit })
+                end
             end
+            isTradeInProgress = true
         end
-        isTradeInProgress = true
     end
 end
 
@@ -423,5 +425,15 @@ function ev.onShowDialog(id, style, title, button1, button2, text)
         isSubmitInProgress = false
         acceptTextDrawId = nil
         return false
+    end
+end
+
+function onWindowMessage(m, p)
+    if p == VK_ESCAPE and window.v then
+        consumeWindowMessage()
+        window.v = false
+    end
+    if p == VK_CONTROL and window.v then
+        consumeWindowMessage()
     end
 end
