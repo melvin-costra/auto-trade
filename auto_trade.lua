@@ -29,12 +29,13 @@ local lastInventoryItem = nil
 local cfg = {
     items = {
         { id = 1575, name = "drugs", amount = 50, limit = 50, isSelected = false },
-        { id = 348, name = "deagle", amount = 50, limit = 50, isSelected = false },
-        { id = 349, name = "shotgun", amount = 40, limit = 35, isSelected = false },
-        { id = 353, name = "smg", amount = 150, limit = 150, isSelected = false },
-        { id = 355, name = "ak47", amount = 200, limit = 200, isSelected = false },
-        { id = 356, name = "m4", amount = 200, limit = 200, isSelected = false },
-        { id = 357, name = "rifle", amount = 50, limit = 50, isSelected = false }
+        { id = 347, name = "sdpistol", amount = 50, limit = 50, isSelected = true },
+        { id = 348, name = "deagle", amount = 50, limit = 50, isSelected = true },
+        { id = 349, name = "shotgun", amount = 40, limit = 40, isSelected = true },
+        { id = 353, name = "smg", amount = 150, limit = 150, isSelected = true },
+        { id = 355, name = "ak47", amount = 200, limit = 200, isSelected = true },
+        { id = 356, name = "m4", amount = 200, limit = 200, isSelected = true },
+        { id = 357, name = "rifle", amount = 50, limit = 50, isSelected = true }
     },
     settings = {
         isActivated = false,
@@ -169,6 +170,7 @@ function tradeInventoryItem(posX, posY)
                         local itemAmount = tonumber(sampTextdrawGetString(i + 1):match("^(%d+)/?"))
                         local amountToTrade = 0
                         if itemAmount <= item.limit then
+                            sampAddChatMessage('[AutoTrade]: Достигнут лимит для {638ECB}' .. item.name, -1)
                             table.remove(itemsToTrade, k)
                             return false
                         elseif itemAmount - item.amount < item.limit then
@@ -188,7 +190,7 @@ function tradeInventoryItem(posX, posY)
 end
 
 function switchToNextPage()
-    if nextPageTextDrawId and sampTextdrawIsExists(nextPageTextDrawId) then
+    if nextPageTextDrawId and sampTextdrawIsExists(nextPageTextDrawId) and lastInventoryItem then
         sampSendClickTextdraw(nextPageTextDrawId)
         local model = select(1, sampTextdrawGetModelRotationZoomVehColor(lastInventoryItem.id))
         if not sampTextdrawIsExists(lastInventoryItem.id) or model ~= lastInventoryItem.model then
@@ -239,28 +241,31 @@ function imgui.OnDrawFrame()
     checkbox_auto_press_accept =     imgui.ImBool(cfg.settings.auto_press_accept)
 
     checkbox_drugs =        imgui.ImBool(cfg.items[1].isSelected)
-    checkbox_deagle =       imgui.ImBool(cfg.items[2].isSelected)
-    checkbox_shotgun =      imgui.ImBool(cfg.items[3].isSelected)
-    checkbox_smg =          imgui.ImBool(cfg.items[4].isSelected)
-    checkbox_ak47 =         imgui.ImBool(cfg.items[5].isSelected)
-    checkbox_m4 =           imgui.ImBool(cfg.items[6].isSelected)
-    checkbox_rifle =        imgui.ImBool(cfg.items[7].isSelected)
+    checkbox_sdpistol =     imgui.ImBool(cfg.items[2].isSelected)
+    checkbox_deagle =       imgui.ImBool(cfg.items[3].isSelected)
+    checkbox_shotgun =      imgui.ImBool(cfg.items[4].isSelected)
+    checkbox_smg =          imgui.ImBool(cfg.items[5].isSelected)
+    checkbox_ak47 =         imgui.ImBool(cfg.items[6].isSelected)
+    checkbox_m4 =           imgui.ImBool(cfg.items[7].isSelected)
+    checkbox_rifle =        imgui.ImBool(cfg.items[8].isSelected)
 
     drugs_amount =          imgui.ImInt(cfg.items[1].amount)
-    deagle_amount =         imgui.ImInt(cfg.items[2].amount)
-    shotgun_amount =        imgui.ImInt(cfg.items[3].amount)
-    smg_amount =            imgui.ImInt(cfg.items[4].amount)
-    ak47_amount =           imgui.ImInt(cfg.items[5].amount)
-    m4_amount =             imgui.ImInt(cfg.items[6].amount)
-    rifle_amount =          imgui.ImInt(cfg.items[7].amount)
+    sdpistol_amount =       imgui.ImInt(cfg.items[2].amount)
+    deagle_amount =         imgui.ImInt(cfg.items[3].amount)
+    shotgun_amount =        imgui.ImInt(cfg.items[4].amount)
+    smg_amount =            imgui.ImInt(cfg.items[5].amount)
+    ak47_amount =           imgui.ImInt(cfg.items[6].amount)
+    m4_amount =             imgui.ImInt(cfg.items[7].amount)
+    rifle_amount =          imgui.ImInt(cfg.items[8].amount)
 
     drugs_limit =           imgui.ImInt(cfg.items[1].limit)
-    deagle_limit =          imgui.ImInt(cfg.items[2].limit)
-    shotgun_limit =         imgui.ImInt(cfg.items[3].limit)
-    smg_limit =             imgui.ImInt(cfg.items[4].limit)
-    ak47_limit =            imgui.ImInt(cfg.items[5].limit)
-    m4_limit =              imgui.ImInt(cfg.items[6].limit)
-    rifle_limit =           imgui.ImInt(cfg.items[7].limit)
+    sdpistol_limit =        imgui.ImInt(cfg.items[2].limit)
+    deagle_limit =          imgui.ImInt(cfg.items[3].limit)
+    shotgun_limit =         imgui.ImInt(cfg.items[4].limit)
+    smg_limit =             imgui.ImInt(cfg.items[5].limit)
+    ak47_limit =            imgui.ImInt(cfg.items[6].limit)
+    m4_limit =              imgui.ImInt(cfg.items[7].limit)
+    rifle_limit =           imgui.ImInt(cfg.items[8].limit)
 
 
     imgui.SetNextWindowPos(imgui.ImVec2(sw / 2, sh / 2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
@@ -285,34 +290,39 @@ function imgui.OnDrawFrame()
     if imgui.SliderInt(u8"g.", drugs_amount, 10, 100) then cfg.items[1].amount = drugs_amount.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
-    if imgui.Checkbox("Deagle", checkbox_deagle) then cfg.items[2].isSelected = checkbox_deagle.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.Checkbox("SDPistol", checkbox_sdpistol) then cfg.items[2].isSelected = checkbox_sdpistol.v saveCFG(cfg, CONFIG_PATH) end
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.", deagle_amount, 20, 100) then cfg.items[2].amount = deagle_amount.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt(u8"pt.", sdpistol_amount, 20, 200) then cfg.items[2].amount = sdpistol_amount.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
-    if imgui.Checkbox("Shotgun", checkbox_shotgun) then cfg.items[3].isSelected = checkbox_shotgun.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.Checkbox("Deagle", checkbox_deagle) then cfg.items[3].isSelected = checkbox_deagle.v saveCFG(cfg, CONFIG_PATH) end
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt. ", shotgun_amount, 20, 100) then cfg.items[3].amount = shotgun_amount.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt(u8"pt. ", deagle_amount, 20, 100) then cfg.items[3].amount = deagle_amount.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
-    if imgui.Checkbox("SMG", checkbox_smg) then cfg.items[4].isSelected = checkbox_smg.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.Checkbox("Shotgun", checkbox_shotgun) then cfg.items[4].isSelected = checkbox_shotgun.v saveCFG(cfg, CONFIG_PATH) end
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.  ", smg_amount, 30, 400) then cfg.items[4].amount = smg_amount.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt(u8"pt.  ", shotgun_amount, 20, 100) then cfg.items[4].amount = shotgun_amount.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
-    if imgui.Checkbox("AK47", checkbox_ak47) then cfg.items[5].isSelected = checkbox_ak47.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.Checkbox("SMG", checkbox_smg) then cfg.items[5].isSelected = checkbox_smg.v saveCFG(cfg, CONFIG_PATH) end
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.   ", ak47_amount, 50, 400) then cfg.items[5].amount = ak47_amount.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt(u8"pt.   ", smg_amount, 30, 400) then cfg.items[5].amount = smg_amount.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
-    if imgui.Checkbox("M4", checkbox_m4) then cfg.items[6].isSelected = checkbox_m4.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.Checkbox("AK47", checkbox_ak47) then cfg.items[6].isSelected = checkbox_ak47.v saveCFG(cfg, CONFIG_PATH) end
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.    ", m4_amount, 50, 400) then cfg.items[6].amount = m4_amount.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt(u8"pt.    ", ak47_amount, 50, 400) then cfg.items[6].amount = ak47_amount.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
-    if imgui.Checkbox("Rifle", checkbox_rifle) then cfg.items[7].isSelected = checkbox_rifle.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.Checkbox("M4", checkbox_m4) then cfg.items[7].isSelected = checkbox_m4.v saveCFG(cfg, CONFIG_PATH) end
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.     ", rifle_amount, 10, 100) then cfg.items[7].amount = rifle_amount.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt(u8"pt.     ", m4_amount, 50, 400) then cfg.items[7].amount = m4_amount.v saveCFG(cfg, CONFIG_PATH) end
+    imgui.NewLine()
+
+    if imgui.Checkbox("Rifle", checkbox_rifle) then cfg.items[8].isSelected = checkbox_rifle.v saveCFG(cfg, CONFIG_PATH) end
+    imgui.SameLine(slider_pos_x)
+    if imgui.SliderInt(u8"pt.      ", rifle_amount, 10, 100) then cfg.items[8].amount = rifle_amount.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
     imgui.Separator()
@@ -325,34 +335,39 @@ function imgui.OnDrawFrame()
     if imgui.SliderInt(u8"g. ", drugs_limit, 0, 100) then cfg.items[1].limit = drugs_limit.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
+    imgui.Text("SDPistol")
+    imgui.SameLine(slider_pos_x)
+    if imgui.SliderInt(u8"pt.       ", sdpistol_limit, 0, 200) then cfg.items[2].limit = sdpistol_limit.v saveCFG(cfg, CONFIG_PATH) end
+    imgui.NewLine()
+
     imgui.Text("Deagle")
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.      ", deagle_limit, 0, 100) then cfg.items[2].limit = deagle_limit.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt(u8"pt.        ", deagle_limit, 0, 100) then cfg.items[3].limit = deagle_limit.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
     imgui.Text("Shotgun")
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.       ", shotgun_limit, 0, 100) then cfg.items[3].limit = shotgun_limit.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt(u8"pt.         ", shotgun_limit, 0, 100) then cfg.items[4].limit = shotgun_limit.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
     imgui.Text("SMG")
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.        ", smg_limit, 0, 500) then cfg.items[4].limit = smg_limit.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt(u8"pt.          ", smg_limit, 0, 500) then cfg.items[5].limit = smg_limit.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
     imgui.Text("AK47")
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.         ", ak47_limit, 0, 500) then cfg.items[5].limit = ak47_limit.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt(u8"pt.           ", ak47_limit, 0, 500) then cfg.items[6].limit = ak47_limit.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
     imgui.Text("M4")
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.          ", m4_limit, 0, 500) then cfg.items[6].limit = m4_limit.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt(u8"pt.            ", m4_limit, 0, 500) then cfg.items[7].limit = m4_limit.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
     imgui.Text("Rifle")
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.           ", rifle_limit, 0, 100) then cfg.items[7].limit = rifle_limit.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt(u8"pt.             ", rifle_limit, 0, 100) then cfg.items[8].limit = rifle_limit.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
     imgui.End()
