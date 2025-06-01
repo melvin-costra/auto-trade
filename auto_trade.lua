@@ -1,7 +1,7 @@
 script_author("Melvin Costra")
 script_name("Auto trade")
 script_description("Этот скрипт был создан для автоматизации процесса обмена предметами между игроками во время трейда (/itrade). Он позволяет мгновенно выполнять обмен предметами на основе параметров, заданных игроком, без необходимости ручного вмешательства.")
-script_version("v0.2.0")
+script_version("v1.0.1")
 script_url("https://github.com/melvin-costra/auto-trade.git")
 
 local ev          = require "samp.events"
@@ -23,8 +23,11 @@ local acceptTextDrawId = nil
 local nextPageTextDrawId = nil
 local emptySlotId = 19478
 local darkSlotColor = 4280098087
-local lastInventoryItem = nil
 local isLastSlotChecked = false
+local currentPageCoord = { x = 453, y = 151 }
+local currentPageTextDrawId = nil
+local currentPage = 1
+local antiflood = os.clock() * 1000
 
 local cfg = {
     items = {
@@ -41,6 +44,7 @@ local cfg = {
         isActivated = false,
         accept_trade_request = false,
         auto_press_accept = false,
+        delay = 50
     }
 }
 
@@ -79,7 +83,7 @@ function checkSavedCFG(savedCFG)
         count1 = count1 + 1
     end
 
-    for key in pairs(savedCFG.settings) do
+    for _ in pairs(savedCFG.settings) do
         count2 = count2 + 1
     end
 
@@ -147,15 +151,15 @@ function tradeInventoryItem(posX, posY)
     for i = 2000, 2500 do
         if sampTextdrawIsExists(i) then
             local x, y = sampTextdrawGetPos(i)
+            if x == currentPageCoord.x and y == currentPageCoord.y then
+                currentPageTextDrawId = i
+            end
             local dist = getDistanceBetweenCoords2d(x, y, posX, posY)
             if dist <= 0.3 then
                 if posX == slots_inventory[#slots_inventory][1] and posY == slots_inventory[#slots_inventory][2] then
                     isLastSlotChecked = true
                 end
                 local model = select(1, sampTextdrawGetModelRotationZoomVehColor(i))
-                if lastInventoryItem == nil and posX == slots_inventory[#slots_inventory][1] and posY == slots_inventory[#slots_inventory][2] then
-                    lastInventoryItem = { id = i, model = model}
-                end
                 local _, outlineColor = sampTextdrawGetOutlineColor(i)
                 if model == emptySlotId or outlineColor ~= darkSlotColor then
                     local missing_items = ''
@@ -183,7 +187,7 @@ function tradeInventoryItem(posX, posY)
                         end
                         ammoValue = amountToTrade
                         tradeItemToRemove = k
-                        sampSendClickTextdraw(i)
+                        clickTextdraw(i)
                         return true
                     end
                 end
@@ -193,14 +197,15 @@ function tradeInventoryItem(posX, posY)
 end
 
 function switchToNextPage()
-    if nextPageTextDrawId and sampTextdrawIsExists(nextPageTextDrawId) and lastInventoryItem then
-        sampSendClickTextdraw(nextPageTextDrawId)
-        local model = select(1, sampTextdrawGetModelRotationZoomVehColor(lastInventoryItem.id))
-        if not sampTextdrawIsExists(lastInventoryItem.id) or model ~= lastInventoryItem.model then
+    if os.clock() * 1000 - antiflood < (cfg.settings.delay < 200 and 200 or cfg.settings.delay) then return end
+    if nextPageTextDrawId and currentPageTextDrawId then
+        local newCurrentPage = tonumber(sampTextdrawGetString(currentPageTextDrawId):match("(%d+)/"))
+        if newCurrentPage > currentPage then
+            currentPage = newCurrentPage
             isNextPageInProgress = false
-            lastInventoryItem = nil
             return
         end
+        clickTextdraw(nextPageTextDrawId)
     else
         isNextPageInProgress = false
         itemsToTrade = {}
@@ -213,6 +218,7 @@ function autoTrade()
             isNextPageInProgress = true
             isLastSlotChecked = false
         else
+            if os.clock() * 1000 - antiflood < cfg.settings.delay then return end
             for i, slot in ipairs(slots_inventory) do
                 local x, y = slot[1], slot[2]
                 if tradeInventoryItem(x, y) then
@@ -227,12 +233,25 @@ function autoTrade()
 end
 
 function sendSubmit()
+    if os.clock() * 1000 - antiflood < cfg.settings.delay then return end
     if cfg.settings.auto_press_accept and acceptTextDrawId and sampTextdrawIsExists(acceptTextDrawId) then
-        sampSendClickTextdraw(acceptTextDrawId)
+        clickTextdraw(acceptTextDrawId)
     else
-        acceptTextDrawId = nil
-        isSubmitInProgress = false
+        setInitialValues()
     end
+end
+
+function clickTextdraw(textdrawId)
+    sampSendClickTextdraw(textdrawId)
+    antiflood = os.clock() * 1000
+end
+
+function setInitialValues()
+    isSubmitInProgress = false
+    acceptTextDrawId = nil
+    currentPageTextDrawId = nil
+    nextPageTextDrawId = nil
+    currentPage = 1
 end
 
 function imgui.OnDrawFrame()
@@ -244,6 +263,7 @@ function imgui.OnDrawFrame()
     checkbox_isActivated =           imgui.ImBool(cfg.settings.isActivated)
     checkbox_accept_trade_request =  imgui.ImBool(cfg.settings.accept_trade_request)
     checkbox_auto_press_accept =     imgui.ImBool(cfg.settings.auto_press_accept)
+    input_delay =                    imgui.ImInt(cfg.settings.delay)
 
     checkbox_drugs =        imgui.ImBool(cfg.items[1].isSelected)
     checkbox_sdpistol =     imgui.ImBool(cfg.items[2].isSelected)
@@ -283,6 +303,10 @@ function imgui.OnDrawFrame()
     if imgui.Checkbox("Accept trade request", checkbox_accept_trade_request) then cfg.settings.accept_trade_request = checkbox_accept_trade_request.v saveCFG(cfg, CONFIG_PATH) end
     imgui.SameLine(slider_pos_x + 180)
     if imgui.Checkbox("Auto press accept", checkbox_auto_press_accept) then cfg.settings.auto_press_accept = checkbox_auto_press_accept.v saveCFG(cfg, CONFIG_PATH) end
+    imgui.NewLine()
+    imgui.PushItemWidth(100)
+    if imgui.InputInt(u8"Delay (ms)", input_delay, 50) then cfg.settings.delay = input_delay.v saveCFG(cfg, CONFIG_PATH) end
+    imgui.PopItemWidth()
     imgui.NewLine()
 
     imgui.Separator()
@@ -422,8 +446,7 @@ function ev.onShowDialog(id, style, title, button1, button2, text)
     end
     if isSubmitInProgress and style == 0 and title:find("Обмен") then
         sampSendDialogResponse(id, 1, 1, -1)
-        isSubmitInProgress = false
-        acceptTextDrawId = nil
+        setInitialValues()
         return false
     end
 end
