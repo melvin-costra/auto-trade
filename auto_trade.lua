@@ -1,18 +1,33 @@
 script_author("Melvin Costra")
 script_name("Auto trade")
-script_description("Этот скрипт был создан для автоматизации процесса обмена предметами между игроками во время трейда (/itrade). Он позволяет мгновенно выполнять обмен предметами на основе параметров, заданных игроком, без необходимости ручного вмешательства.")
-script_version("v1.0.1")
+script_description("Р­С‚РѕС‚ СЃРєСЂРёРїС‚ Р±С‹Р» СЃРѕР·РґР°РЅ РґР»СЏ Р°РІС‚РѕРјР°С‚РёР·Р°С†РёРё РїСЂРѕС†РµСЃСЃР° РѕР±РјРµРЅР° РїСЂРµРґРјРµС‚Р°РјРё РјРµР¶РґСѓ РёРіСЂРѕРєР°РјРё РІРѕ РІСЂРµРјСЏ С‚СЂРµР№РґР° (/itrade). РћРЅ РїРѕР·РІРѕР»СЏРµС‚ РјРіРЅРѕРІРµРЅРЅРѕ РІС‹РїРѕР»РЅСЏС‚СЊ РѕР±РјРµРЅ РїСЂРµРґРјРµС‚Р°РјРё РЅР° РѕСЃРЅРѕРІРµ РїР°СЂР°РјРµС‚СЂРѕРІ, Р·Р°РґР°РЅРЅС‹С… РёРіСЂРѕРєРѕРј, Р±РµР· РЅРµРѕР±С…РѕРґРёРјРѕСЃС‚Рё СЂСѓС‡РЅРѕРіРѕ РІРјРµС€Р°С‚РµР»СЊСЃС‚РІР°.")
+script_version("27.10.2026")
 script_url("https://github.com/melvin-costra/auto-trade.git")
 
-local ev          = require "samp.events"
-local imgui       = require 'imgui'
-local encoding    = require 'encoding'
-encoding.default  = 'CP1251'
-u8                = encoding.UTF8
-require "lib.moonloader"
+local ev = require "samp.events"
+local imgui = require 'imgui'
+local encoding = require 'encoding'
+encoding.default = 'CP1251'
+local u8 = encoding.UTF8
+
+local function wrapToGame(fnName)
+    local original = _G[fnName]
+    _G[fnName] = function(...)
+    local n = select("#", ...)
+    local args = {...}
+    for i = 1, n do
+        if type(args[i]) == "string" then
+            args[i] = u8:decode(args[i])
+        end
+    end
+    return original(unpack(args, 1, n))
+    end
+end
+wrapToGame("sampAddChatMessage")
+wrapToGame("sampSendChat")
 
 local window = imgui.ImBool(false)
-local CONFIG_PATH = "moonloader/config/configAutoTrade.json"
+local CONFIG_PATH = "moonloader/config/auto-trade.json"
 local isTradeInProgress = false
 local isSubmitInProgress = false
 local isNextPageInProgress = false
@@ -137,6 +152,10 @@ function main()
     end
 end
 
+function printMessage(text)
+    sampAddChatMessage("{0088CC}[ATrade]: {FFFFFF}" .. text, -1)
+end
+
 function requestTrade()
     local valid, ped = getCharPlayerIsTargeting(PLAYER_HANDLE)
     if valid and doesCharExist(ped) then
@@ -167,7 +186,7 @@ function tradeInventoryItem(posX, posY)
                         missing_items = missing_items .. item.name .. ' | '
                     end
                     if missing_items ~= '' then
-                        sampAddChatMessage('[AutoTrade]: Отсутствующие предметы:  {638ECB}' .. missing_items:sub(0, -4), -1)
+                        printMessage('РћС‚СЃСѓС‚СЃС‚РІСѓСЋС‰РёРµ РїСЂРµРґРјРµС‚С‹:  {638ECB}' .. missing_items:sub(0, -4))
                     end
                     itemsToTrade = {}
                     return true
@@ -177,7 +196,7 @@ function tradeInventoryItem(posX, posY)
                         local itemAmount = tonumber(sampTextdrawGetString(i + 1):match("^(%d+)/?"))
                         local amountToTrade = 0
                         if itemAmount <= item.limit then
-                            sampAddChatMessage('[AutoTrade]: Достигнут лимит для {638ECB}' .. item.name, -1)
+                            printMessage('Р”РѕСЃС‚РёРіРЅСѓС‚ Р»РёРјРёС‚ РґР»СЏ {638ECB}' .. item.name)
                             table.remove(itemsToTrade, k)
                             return false
                         elseif itemAmount - item.amount < item.limit then
@@ -254,6 +273,13 @@ function setInitialValues()
     currentPage = 1
 end
 
+function onWindowMessage(m, p)
+    if p == VK_ESCAPE and window.v then
+        consumeWindowMessage()
+        window.v = false
+    end
+end
+
 function imgui.OnDrawFrame()
     local sw, sh = getScreenResolution()
     local window_width = 440
@@ -305,7 +331,7 @@ function imgui.OnDrawFrame()
     if imgui.Checkbox("Auto press accept", checkbox_auto_press_accept) then cfg.settings.auto_press_accept = checkbox_auto_press_accept.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
     imgui.PushItemWidth(100)
-    if imgui.InputInt(u8"Delay (ms)", input_delay, 50) then cfg.settings.delay = input_delay.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.InputInt("Delay (ms)", input_delay, 50) then cfg.settings.delay = input_delay.v saveCFG(cfg, CONFIG_PATH) end
     imgui.PopItemWidth()
     imgui.NewLine()
 
@@ -316,42 +342,42 @@ function imgui.OnDrawFrame()
 
     if imgui.Checkbox("Drugs", checkbox_drugs) then cfg.items[1].isSelected = checkbox_drugs.v saveCFG(cfg, CONFIG_PATH) end
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"g.", drugs_amount, 10, 100) then cfg.items[1].amount = drugs_amount.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt("g.", drugs_amount, 10, 100) then cfg.items[1].amount = drugs_amount.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
     if imgui.Checkbox("SDPistol", checkbox_sdpistol) then cfg.items[2].isSelected = checkbox_sdpistol.v saveCFG(cfg, CONFIG_PATH) end
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.", sdpistol_amount, 20, 200) then cfg.items[2].amount = sdpistol_amount.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt("pt.", sdpistol_amount, 20, 200) then cfg.items[2].amount = sdpistol_amount.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
     if imgui.Checkbox("Deagle", checkbox_deagle) then cfg.items[3].isSelected = checkbox_deagle.v saveCFG(cfg, CONFIG_PATH) end
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt. ", deagle_amount, 20, 100) then cfg.items[3].amount = deagle_amount.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt("pt. ", deagle_amount, 20, 100) then cfg.items[3].amount = deagle_amount.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
     if imgui.Checkbox("Shotgun", checkbox_shotgun) then cfg.items[4].isSelected = checkbox_shotgun.v saveCFG(cfg, CONFIG_PATH) end
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.  ", shotgun_amount, 20, 100) then cfg.items[4].amount = shotgun_amount.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt("pt.  ", shotgun_amount, 20, 100) then cfg.items[4].amount = shotgun_amount.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
     if imgui.Checkbox("SMG", checkbox_smg) then cfg.items[5].isSelected = checkbox_smg.v saveCFG(cfg, CONFIG_PATH) end
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.   ", smg_amount, 30, 400) then cfg.items[5].amount = smg_amount.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt("pt.   ", smg_amount, 30, 400) then cfg.items[5].amount = smg_amount.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
     if imgui.Checkbox("AK47", checkbox_ak47) then cfg.items[6].isSelected = checkbox_ak47.v saveCFG(cfg, CONFIG_PATH) end
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.    ", ak47_amount, 50, 400) then cfg.items[6].amount = ak47_amount.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt("pt.    ", ak47_amount, 50, 400) then cfg.items[6].amount = ak47_amount.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
     if imgui.Checkbox("M4", checkbox_m4) then cfg.items[7].isSelected = checkbox_m4.v saveCFG(cfg, CONFIG_PATH) end
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.     ", m4_amount, 50, 400) then cfg.items[7].amount = m4_amount.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt("pt.     ", m4_amount, 50, 400) then cfg.items[7].amount = m4_amount.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
     if imgui.Checkbox("Rifle", checkbox_rifle) then cfg.items[8].isSelected = checkbox_rifle.v saveCFG(cfg, CONFIG_PATH) end
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.      ", rifle_amount, 10, 100) then cfg.items[8].amount = rifle_amount.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt("pt.      ", rifle_amount, 10, 100) then cfg.items[8].amount = rifle_amount.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
     imgui.Separator()
@@ -361,42 +387,42 @@ function imgui.OnDrawFrame()
 
     imgui.Text("Drugs")
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"g. ", drugs_limit, 0, 100) then cfg.items[1].limit = drugs_limit.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt("g. ", drugs_limit, 0, 100) then cfg.items[1].limit = drugs_limit.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
     imgui.Text("SDPistol")
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.       ", sdpistol_limit, 0, 200) then cfg.items[2].limit = sdpistol_limit.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt("pt.       ", sdpistol_limit, 0, 200) then cfg.items[2].limit = sdpistol_limit.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
     imgui.Text("Deagle")
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.        ", deagle_limit, 0, 100) then cfg.items[3].limit = deagle_limit.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt("pt.        ", deagle_limit, 0, 100) then cfg.items[3].limit = deagle_limit.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
     imgui.Text("Shotgun")
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.         ", shotgun_limit, 0, 100) then cfg.items[4].limit = shotgun_limit.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt("pt.         ", shotgun_limit, 0, 100) then cfg.items[4].limit = shotgun_limit.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
     imgui.Text("SMG")
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.          ", smg_limit, 0, 500) then cfg.items[5].limit = smg_limit.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt("pt.          ", smg_limit, 0, 500) then cfg.items[5].limit = smg_limit.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
     imgui.Text("AK47")
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.           ", ak47_limit, 0, 500) then cfg.items[6].limit = ak47_limit.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt("pt.           ", ak47_limit, 0, 500) then cfg.items[6].limit = ak47_limit.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
     imgui.Text("M4")
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.            ", m4_limit, 0, 500) then cfg.items[7].limit = m4_limit.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt("pt.            ", m4_limit, 0, 500) then cfg.items[7].limit = m4_limit.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
     imgui.Text("Rifle")
     imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt(u8"pt.             ", rifle_limit, 0, 100) then cfg.items[8].limit = rifle_limit.v saveCFG(cfg, CONFIG_PATH) end
+    if imgui.SliderInt("pt.             ", rifle_limit, 0, 100) then cfg.items[8].limit = rifle_limit.v saveCFG(cfg, CONFIG_PATH) end
     imgui.NewLine()
 
     imgui.End()
@@ -409,13 +435,14 @@ function apply_custom_style()
 end
 
 function ev.onServerMessage(c, text)
-    if isSubmitInProgress and text:find("Обмен не может быть пустым") then
+    text = u8(text)
+    if isSubmitInProgress and text:find("РћР±РјРµРЅ РЅРµ РјРѕР¶РµС‚ Р±С‹С‚СЊ РїСѓСЃС‚С‹Рј") then
         isSubmitInProgress = false
     end
-    if cfg.settings.accept_trade_request and text:find("(.+) предложил вам обмен предметами .+") then
+    if cfg.settings.accept_trade_request and text:find("(.+) РїСЂРµРґР»РѕР¶РёР» РІР°Рј РѕР±РјРµРЅ РїСЂРµРґРјРµС‚Р°РјРё .+") then
         sampSendChat("/accept invtrade")
     end
-    if cfg.settings.auto_press_accept and text:find("(.+) согласился на обмен, нажмите accept для принятия") then
+    if cfg.settings.auto_press_accept and text:find("(.+) СЃРѕРіР»Р°СЃРёР»СЃСЏ РЅР° РѕР±РјРµРЅ, РЅР°Р¶РјРёС‚Рµ accept РґР»СЏ РїСЂРёРЅСЏС‚РёСЏ") then
         isSubmitInProgress = true
     end
 end
@@ -438,25 +465,17 @@ function ev.onShowTextDraw(id, data)
 end
 
 function ev.onShowDialog(id, style, title, button1, button2, text)
-    if ammoValue ~= nil and style == 1 and text:find("Введите количество:") then
+    title = u8(title)
+    text = u8(text)
+    if ammoValue ~= nil and style == 1 and text:find("Р’РІРµРґРёС‚Рµ РєРѕР»РёС‡РµСЃС‚РІРѕ:") then
         table.remove(itemsToTrade, tradeItemToRemove)
         sampSendDialogResponse(id, 1, 1, ammoValue)
         ammoValue = nil
         return false
     end
-    if isSubmitInProgress and style == 0 and title:find("Обмен") then
+    if isSubmitInProgress and style == 0 and title:find("РћР±РјРµРЅ") then
         sampSendDialogResponse(id, 1, 1, -1)
         setInitialValues()
         return false
-    end
-end
-
-function onWindowMessage(m, p)
-    if p == VK_ESCAPE and window.v then
-        consumeWindowMessage()
-        window.v = false
-    end
-    if p == VK_CONTROL and window.v then
-        consumeWindowMessage()
     end
 end
