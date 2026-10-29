@@ -6,6 +6,7 @@ script_url("https://github.com/melvin-costra/auto-trade.git")
 
 local ev = require "samp.events"
 local imgui = require 'imgui'
+local keys = require "vkeys"
 local encoding = require 'encoding'
 encoding.default = 'CP1251'
 local u8 = encoding.UTF8
@@ -30,18 +31,12 @@ local window = imgui.ImBool(false)
 local CONFIG_PATH = "moonloader/config/auto-trade.json"
 local isTradeInProgress = false
 local isSubmitInProgress = false
-local isNextPageInProgress = false
 local ammoValue = nil
 local itemsToTrade = {}
 local tradeItemToRemove = nil
 local acceptTextDrawId = nil
-local nextPageTextDrawId = nil
 local emptySlotId = 19478
 local darkSlotColor = 4280098087
-local isLastSlotChecked = false
-local currentPageCoord = { x = 453, y = 151 }
-local currentPageTextDrawId = nil
-local currentPage = 1
 local antiflood = os.clock() * 1000
 
 local cfg = {
@@ -131,7 +126,6 @@ function main()
         end
     end
 
-    apply_custom_style()
     sampRegisterChatCommand("atrade", function()
         window.v = not window.v
     end)
@@ -139,21 +133,19 @@ function main()
     while true do
         wait(0)
         imgui.Process = window.v
-        if isNextPageInProgress then
-            switchToNextPage()
-        elseif isTradeInProgress then
+        if isTradeInProgress then
             autoTrade()
         elseif isSubmitInProgress then
             sendSubmit()
         end
-        if isKeyDown(VK_RBUTTON) and isKeyJustPressed(VK_Q) then
+        if isKeyDown(keys.VK_RBUTTON) and isKeyJustPressed(keys.VK_Q) then
             requestTrade()
         end
     end
 end
 
 function printMessage(text)
-    sampAddChatMessage("{0088CC}[ATrade]: {FFFFFF}" .. text, -1)
+    sampAddChatMessage("{00FF66}[ATrade]: {FFFFFF}" .. text, -1)
 end
 
 function requestTrade()
@@ -167,28 +159,14 @@ function requestTrade()
 end
 
 function tradeInventoryItem(posX, posY)
-    for i = 2000, 2500 do
+    for i = 0, 2500 do
         if sampTextdrawIsExists(i) then
             local x, y = sampTextdrawGetPos(i)
-            if x == currentPageCoord.x and y == currentPageCoord.y then
-                currentPageTextDrawId = i
-            end
             local dist = getDistanceBetweenCoords2d(x, y, posX, posY)
             if dist <= 0.3 then
-                if posX == slots_inventory[#slots_inventory][1] and posY == slots_inventory[#slots_inventory][2] then
-                    isLastSlotChecked = true
-                end
                 local model = select(1, sampTextdrawGetModelRotationZoomVehColor(i))
                 local _, outlineColor = sampTextdrawGetOutlineColor(i)
                 if model == emptySlotId or outlineColor ~= darkSlotColor then
-                    local missing_items = ''
-                    for _, item in ipairs(itemsToTrade) do
-                        missing_items = missing_items .. item.name .. ' | '
-                    end
-                    if missing_items ~= '' then
-                        printMessage('Отсутствующие предметы:  {638ECB}' .. missing_items:sub(0, -4))
-                    end
-                    itemsToTrade = {}
                     return true
                 end
                 for k, item in ipairs(itemsToTrade) do
@@ -196,7 +174,7 @@ function tradeInventoryItem(posX, posY)
                         local itemAmount = tonumber(sampTextdrawGetString(i + 1):match("^(%d+)/?"))
                         local amountToTrade = 0
                         if itemAmount <= item.limit then
-                            printMessage('Достигнут лимит для {638ECB}' .. item.name)
+                            printMessage('Достигнут лимит для {00FF66}' .. item.name)
                             table.remove(itemsToTrade, k)
                             return false
                         elseif itemAmount - item.amount < item.limit then
@@ -215,36 +193,24 @@ function tradeInventoryItem(posX, posY)
     end
 end
 
-function switchToNextPage()
-    if os.clock() * 1000 - antiflood < (cfg.settings.delay < 200 and 200 or cfg.settings.delay) then return end
-    if nextPageTextDrawId and currentPageTextDrawId then
-        local newCurrentPage = tonumber(sampTextdrawGetString(currentPageTextDrawId):match("(%d+)/"))
-        if newCurrentPage > currentPage then
-            currentPage = newCurrentPage
-            isNextPageInProgress = false
-            return
-        end
-        clickTextdraw(nextPageTextDrawId)
-    else
-        isNextPageInProgress = false
-        itemsToTrade = {}
-    end
-end
-
 function autoTrade()
     if #itemsToTrade > 0 then
-        if isLastSlotChecked and #itemsToTrade > 0 then
-            isNextPageInProgress = true
-            isLastSlotChecked = false
-        else
-            if os.clock() * 1000 - antiflood < cfg.settings.delay then return end
-            for i, slot in ipairs(slots_inventory) do
-                local x, y = slot[1], slot[2]
-                if tradeInventoryItem(x, y) then
-                    return
-                end
+        if os.clock() * 1000 - antiflood < cfg.settings.delay then return end
+        for _, pos in ipairs(slots_inventory) do
+            if tradeInventoryItem(pos[1], pos[2]) then
+                return
             end
         end
+        if #itemsToTrade > 0 then
+            local missing_items = ''
+            for _, item in ipairs(itemsToTrade) do
+                missing_items = missing_items .. item.name .. ' | '
+            end
+            printMessage('Отсутствующие предметы: {00FF66}' .. missing_items:sub(0, -4))
+        end
+        itemsToTrade = {}
+        isTradeInProgress = false
+        isSubmitInProgress = true
     else
         isTradeInProgress = false
         isSubmitInProgress = true
@@ -266,15 +232,15 @@ function clickTextdraw(textdrawId)
 end
 
 function setInitialValues()
+    itemsToTrade = {}
+    isTradeInProgress = false
     isSubmitInProgress = false
-    acceptTextDrawId = nil
-    currentPageTextDrawId = nil
-    nextPageTextDrawId = nil
-    currentPage = 1
+    ammoValue = nil
+    tradeItemToRemove = nil
 end
 
 function onWindowMessage(m, p)
-    if p == VK_ESCAPE and window.v then
+    if p == keys.VK_ESCAPE and window.v then
         consumeWindowMessage()
         window.v = false
     end
@@ -428,29 +394,20 @@ function imgui.OnDrawFrame()
     imgui.End()
 end
 
-function apply_custom_style()
-    local style = imgui.GetStyle()
-
-    style.WindowTitleAlign = imgui.ImVec2(0.5, 0.5)
-end
-
 function ev.onServerMessage(c, text)
     text = u8(text)
-    if isSubmitInProgress and text:find("Обмен не может быть пустым") then
-        isSubmitInProgress = false
+    if (isTradeInProgress and text:find("^ У игрока слишком маленький уровень для обмена оружием")) or (isSubmitInProgress and text:find("^ Обмен не может быть пустым")) then
+        setInitialValues()
     end
-    if cfg.settings.accept_trade_request and text:find("(.+) предложил вам обмен предметами .+") then
+    if cfg.settings.accept_trade_request and text:find("^ .+ предложил вам обмен предметами {FFFFFF}%(%( Нажмите Y/N для принятия/отмены %)%)") then
         sampSendChat("/accept invtrade")
     end
-    if cfg.settings.auto_press_accept and text:find("(.+) согласился на обмен, нажмите accept для принятия") then
+    if cfg.settings.auto_press_accept and text:find("^ .+ согласился на обмен, нажмите accept для принятия") then
         isSubmitInProgress = true
     end
 end
 
 function ev.onShowTextDraw(id, data)
-    if data.text:find(">>>") then
-        nextPageTextDrawId = id
-    end
     if data.text:find("accept") then
         acceptTextDrawId = id
         if cfg.settings.isActivated then
