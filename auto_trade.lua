@@ -1,11 +1,12 @@
+local version = "30.10.2026"
 script_author("Melvin Costra")
 script_name("Auto trade")
 script_description("Этот скрипт был создан для автоматизации процесса обмена предметами между игроками во время трейда (/itrade). Он позволяет мгновенно выполнять обмен предметами на основе параметров, заданных игроком, без необходимости ручного вмешательства.")
-script_version("27.10.2026")
+script_version(version)
 script_url("https://github.com/melvin-costra/auto-trade.git")
 
 local ev = require "samp.events"
-local imgui = require 'imgui'
+local imgui = require 'mimgui'
 local keys = require "vkeys"
 local encoding = require 'encoding'
 encoding.default = 'CP1251'
@@ -27,7 +28,7 @@ end
 wrapToGame("sampAddChatMessage")
 wrapToGame("sampSendChat")
 
-local window = imgui.ImBool(false)
+local window = imgui.new.bool(false)
 local CONFIG_PATH = "moonloader/config/auto-trade.json"
 local isTradeInProgress = false
 local isSubmitInProgress = false
@@ -40,21 +41,41 @@ local darkSlotColor = 4280098087
 local antiflood = os.clock() * 1000
 
 local cfg = {
+    version = version,
     items = {
-        { id = 1575, name = "drugs", amount = 50, limit = 50, isSelected = false },
-        { id = 347, name = "sdpistol", amount = 50, limit = 50, isSelected = true },
-        { id = 348, name = "deagle", amount = 50, limit = 50, isSelected = true },
-        { id = 349, name = "shotgun", amount = 40, limit = 40, isSelected = true },
-        { id = 353, name = "smg", amount = 150, limit = 150, isSelected = true },
-        { id = 355, name = "ak47", amount = 200, limit = 200, isSelected = true },
-        { id = 356, name = "m4", amount = 200, limit = 200, isSelected = true },
-        { id = 357, name = "rifle", amount = 50, limit = 50, isSelected = true }
+        { id = 1575, name = "drugs", amount = 50, limit = 50, min = 1, max = 300, step = 25, isSelected = false },
+        { id = 347, name = "sdpistol", amount = 50, limit = 50, min = 1, max = 10000, step = 25, isSelected = true },
+        { id = 348, name = "deagle", amount = 50, limit = 50, min = 1, max = 10000, step = 25, isSelected = true },
+        { id = 349, name = "shotgun", amount = 40, limit = 40, min = 1, max = 10000, step = 25, isSelected = true },
+        { id = 353, name = "smg", amount = 150, limit = 150, min = 1, max = 10000, step = 50, isSelected = true },
+        { id = 355, name = "ak47", amount = 200, limit = 200, min = 1, max = 10000, step = 50, isSelected = true },
+        { id = 356, name = "m4", amount = 200, limit = 200, min = 1, max = 10000, step = 50, isSelected = true },
+        { id = 357, name = "rifle", amount = 50, limit = 50, min = 1, max = 10000, step = 25, isSelected = true }
     },
     settings = {
         isActivated = false,
         accept_trade_request = false,
         auto_press_accept = false,
-        delay = 50
+        delay = 300
+    }
+}
+
+local ui = {
+    settings = {
+        isActivated = imgui.new.bool(cfg.settings.isActivated),
+        acceptTradeRequest = imgui.new.bool(cfg.settings.accept_trade_request),
+        autoPressAccept = imgui.new.bool(cfg.settings.auto_press_accept),
+        delay = imgui.new.int(cfg.settings.delay)
+    },
+    items = {
+        drugs     = { label = "Drugs" },
+        sdpistol  = { label = "SDPistol" },
+        deagle    = { label = "Deagle" },
+        shotgun   = { label = "Shotgun" },
+        smg       = { label = "SMG" },
+        ak47      = { label = "AK47" },
+        m4        = { label = "M4" },
+        rifle     = { label = "Rifle" }
     }
 }
 
@@ -81,25 +102,6 @@ local slots_inventory = {
     { 424.5, 287 },
 }
 
-function checkSavedCFG(savedCFG)
-    if savedCFG.items == nil or savedCFG.settings == nil or #savedCFG.items ~= #cfg.items then
-        return false
-    end
-    local count1, count2 = 0, 0
-    for key in pairs(cfg.settings) do
-        if savedCFG.settings[key] == nil then
-            return false
-        end
-        count1 = count1 + 1
-    end
-
-    for _ in pairs(savedCFG.settings) do
-        count2 = count2 + 1
-    end
-
-    return count1 == count2
-end
-
 function saveCFG(table, path)
     local save = io.open(path, "w")
     if save then
@@ -108,10 +110,7 @@ function saveCFG(table, path)
     end
 end
 
-function main()
-    if not isSampLoaded() or not isSampfuncsLoaded() then return end
-    while not isSampAvailable() do wait(100) end
-
+function loadCFG()
     if not doesDirectoryExist('moonloader/config') then createDirectory("moonloader/config") end
 
     if not doesFileExist(CONFIG_PATH) then
@@ -120,19 +119,36 @@ function main()
         local file = io.open(CONFIG_PATH, 'r')
         if file then
             local fileCFG = decodeJson(file:read('*a'))
-            if checkSavedCFG(fileCFG) then
+            file:close()
+            if fileCFG.version == cfg.version then
                 cfg = fileCFG
+            else
+                saveCFG(cfg, CONFIG_PATH)
             end
         end
+
+        for _, item in ipairs(cfg.items) do
+            local state = ui.items[item.name]
+            state.isSelected = imgui.new.bool(item.isSelected)
+            state.amount = imgui.new.int(item.amount)
+            state.limit = imgui.new.int(item.limit)
+        end
     end
+end
+
+
+function main()
+    if not isSampLoaded() or not isSampfuncsLoaded() then return end
+    while not isSampAvailable() do wait(100) end
+
+    loadCFG()
 
     sampRegisterChatCommand("atrade", function()
-        window.v = not window.v
+        window[0] = not window[0]
     end)
 
     while true do
         wait(0)
-        imgui.Process = window.v
         if isTradeInProgress then
             autoTrade()
         elseif isSubmitInProgress then
@@ -240,159 +256,143 @@ function setInitialValues()
 end
 
 function onWindowMessage(m, p)
-    if p == keys.VK_ESCAPE and window.v then
+    if p == keys.VK_ESCAPE and window[0] then
         consumeWindowMessage()
-        window.v = false
+        window[0] = false
     end
 end
 
-function imgui.OnDrawFrame()
-    local sw, sh = getScreenResolution()
-    local window_width = 440
-    local window_height = 500
-    local slider_pos_x = window_width / 4
-
-    checkbox_isActivated =           imgui.ImBool(cfg.settings.isActivated)
-    checkbox_accept_trade_request =  imgui.ImBool(cfg.settings.accept_trade_request)
-    checkbox_auto_press_accept =     imgui.ImBool(cfg.settings.auto_press_accept)
-    input_delay =                    imgui.ImInt(cfg.settings.delay)
-
-    checkbox_drugs =        imgui.ImBool(cfg.items[1].isSelected)
-    checkbox_sdpistol =     imgui.ImBool(cfg.items[2].isSelected)
-    checkbox_deagle =       imgui.ImBool(cfg.items[3].isSelected)
-    checkbox_shotgun =      imgui.ImBool(cfg.items[4].isSelected)
-    checkbox_smg =          imgui.ImBool(cfg.items[5].isSelected)
-    checkbox_ak47 =         imgui.ImBool(cfg.items[6].isSelected)
-    checkbox_m4 =           imgui.ImBool(cfg.items[7].isSelected)
-    checkbox_rifle =        imgui.ImBool(cfg.items[8].isSelected)
-
-    drugs_amount =          imgui.ImInt(cfg.items[1].amount)
-    sdpistol_amount =       imgui.ImInt(cfg.items[2].amount)
-    deagle_amount =         imgui.ImInt(cfg.items[3].amount)
-    shotgun_amount =        imgui.ImInt(cfg.items[4].amount)
-    smg_amount =            imgui.ImInt(cfg.items[5].amount)
-    ak47_amount =           imgui.ImInt(cfg.items[6].amount)
-    m4_amount =             imgui.ImInt(cfg.items[7].amount)
-    rifle_amount =          imgui.ImInt(cfg.items[8].amount)
-
-    drugs_limit =           imgui.ImInt(cfg.items[1].limit)
-    sdpistol_limit =        imgui.ImInt(cfg.items[2].limit)
-    deagle_limit =          imgui.ImInt(cfg.items[3].limit)
-    shotgun_limit =         imgui.ImInt(cfg.items[4].limit)
-    smg_limit =             imgui.ImInt(cfg.items[5].limit)
-    ak47_limit =            imgui.ImInt(cfg.items[6].limit)
-    m4_limit =              imgui.ImInt(cfg.items[7].limit)
-    rifle_limit =           imgui.ImInt(cfg.items[8].limit)
-
-
-    imgui.SetNextWindowPos(imgui.ImVec2(sw / 2, sh / 2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
-    imgui.SetNextWindowSize(imgui.ImVec2(window_width, window_height), imgui.Cond.FirstUseEver)
-
-    imgui.Begin("Auto Trade", window, imgui.WindowFlags.NoResize + imgui.WindowFlags.NoCollapse + imgui.WindowFlags.NoMove)
-
-    if imgui.Checkbox("Turn on", checkbox_isActivated) then cfg.settings.isActivated = checkbox_isActivated.v saveCFG(cfg, CONFIG_PATH) end
-    imgui.SameLine(slider_pos_x)
-    if imgui.Checkbox("Accept trade request", checkbox_accept_trade_request) then cfg.settings.accept_trade_request = checkbox_accept_trade_request.v saveCFG(cfg, CONFIG_PATH) end
-    imgui.SameLine(slider_pos_x + 180)
-    if imgui.Checkbox("Auto press accept", checkbox_auto_press_accept) then cfg.settings.auto_press_accept = checkbox_auto_press_accept.v saveCFG(cfg, CONFIG_PATH) end
-    imgui.NewLine()
-    imgui.PushItemWidth(100)
-    if imgui.InputInt("Delay (ms)", input_delay, 50) then cfg.settings.delay = input_delay.v saveCFG(cfg, CONFIG_PATH) end
-    imgui.PopItemWidth()
-    imgui.NewLine()
-
-    imgui.Separator()
-    imgui.SetCursorPosX(slider_pos_x)
-    imgui.Text("Trade values")
-    imgui.NewLine()
-
-    if imgui.Checkbox("Drugs", checkbox_drugs) then cfg.items[1].isSelected = checkbox_drugs.v saveCFG(cfg, CONFIG_PATH) end
-    imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt("g.", drugs_amount, 10, 100) then cfg.items[1].amount = drugs_amount.v saveCFG(cfg, CONFIG_PATH) end
-    imgui.NewLine()
-
-    if imgui.Checkbox("SDPistol", checkbox_sdpistol) then cfg.items[2].isSelected = checkbox_sdpistol.v saveCFG(cfg, CONFIG_PATH) end
-    imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt("pt.", sdpistol_amount, 20, 200) then cfg.items[2].amount = sdpistol_amount.v saveCFG(cfg, CONFIG_PATH) end
-    imgui.NewLine()
-
-    if imgui.Checkbox("Deagle", checkbox_deagle) then cfg.items[3].isSelected = checkbox_deagle.v saveCFG(cfg, CONFIG_PATH) end
-    imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt("pt. ", deagle_amount, 20, 100) then cfg.items[3].amount = deagle_amount.v saveCFG(cfg, CONFIG_PATH) end
-    imgui.NewLine()
-
-    if imgui.Checkbox("Shotgun", checkbox_shotgun) then cfg.items[4].isSelected = checkbox_shotgun.v saveCFG(cfg, CONFIG_PATH) end
-    imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt("pt.  ", shotgun_amount, 20, 100) then cfg.items[4].amount = shotgun_amount.v saveCFG(cfg, CONFIG_PATH) end
-    imgui.NewLine()
-
-    if imgui.Checkbox("SMG", checkbox_smg) then cfg.items[5].isSelected = checkbox_smg.v saveCFG(cfg, CONFIG_PATH) end
-    imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt("pt.   ", smg_amount, 30, 400) then cfg.items[5].amount = smg_amount.v saveCFG(cfg, CONFIG_PATH) end
-    imgui.NewLine()
-
-    if imgui.Checkbox("AK47", checkbox_ak47) then cfg.items[6].isSelected = checkbox_ak47.v saveCFG(cfg, CONFIG_PATH) end
-    imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt("pt.    ", ak47_amount, 50, 400) then cfg.items[6].amount = ak47_amount.v saveCFG(cfg, CONFIG_PATH) end
-    imgui.NewLine()
-
-    if imgui.Checkbox("M4", checkbox_m4) then cfg.items[7].isSelected = checkbox_m4.v saveCFG(cfg, CONFIG_PATH) end
-    imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt("pt.     ", m4_amount, 50, 400) then cfg.items[7].amount = m4_amount.v saveCFG(cfg, CONFIG_PATH) end
-    imgui.NewLine()
-
-    if imgui.Checkbox("Rifle", checkbox_rifle) then cfg.items[8].isSelected = checkbox_rifle.v saveCFG(cfg, CONFIG_PATH) end
-    imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt("pt.      ", rifle_amount, 10, 100) then cfg.items[8].amount = rifle_amount.v saveCFG(cfg, CONFIG_PATH) end
-    imgui.NewLine()
-
-    imgui.Separator()
-    imgui.SetCursorPosX(slider_pos_x)
-    imgui.Text("Limits")
-    imgui.NewLine()
-
-    imgui.Text("Drugs")
-    imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt("g. ", drugs_limit, 0, 100) then cfg.items[1].limit = drugs_limit.v saveCFG(cfg, CONFIG_PATH) end
-    imgui.NewLine()
-
-    imgui.Text("SDPistol")
-    imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt("pt.       ", sdpistol_limit, 0, 200) then cfg.items[2].limit = sdpistol_limit.v saveCFG(cfg, CONFIG_PATH) end
-    imgui.NewLine()
-
-    imgui.Text("Deagle")
-    imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt("pt.        ", deagle_limit, 0, 100) then cfg.items[3].limit = deagle_limit.v saveCFG(cfg, CONFIG_PATH) end
-    imgui.NewLine()
-
-    imgui.Text("Shotgun")
-    imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt("pt.         ", shotgun_limit, 0, 100) then cfg.items[4].limit = shotgun_limit.v saveCFG(cfg, CONFIG_PATH) end
-    imgui.NewLine()
-
-    imgui.Text("SMG")
-    imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt("pt.          ", smg_limit, 0, 500) then cfg.items[5].limit = smg_limit.v saveCFG(cfg, CONFIG_PATH) end
-    imgui.NewLine()
-
-    imgui.Text("AK47")
-    imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt("pt.           ", ak47_limit, 0, 500) then cfg.items[6].limit = ak47_limit.v saveCFG(cfg, CONFIG_PATH) end
-    imgui.NewLine()
-
-    imgui.Text("M4")
-    imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt("pt.            ", m4_limit, 0, 500) then cfg.items[7].limit = m4_limit.v saveCFG(cfg, CONFIG_PATH) end
-    imgui.NewLine()
-
-    imgui.Text("Rifle")
-    imgui.SameLine(slider_pos_x)
-    if imgui.SliderInt("pt.             ", rifle_limit, 0, 100) then cfg.items[8].limit = rifle_limit.v saveCFG(cfg, CONFIG_PATH) end
-    imgui.NewLine()
-
-    imgui.End()
+local function showTooltip(text)
+    if imgui.IsItemHovered() then
+        imgui.BeginTooltip()
+        imgui.PushTextWrapPos(300)
+        imgui.TextUnformatted(text)
+        imgui.PopTextWrapPos()
+        imgui.EndTooltip()
+    end
 end
+
+imgui.OnInitialize(function()
+    imgui.GetIO().IniFilename = nil
+
+    local style = imgui.GetStyle()
+    local colors = style.Colors
+    local clr = imgui.Col
+    local accent = imgui.ImVec4(0.00, 1.00, 0.40, 1.00)
+    local accentHover = imgui.ImVec4(0.00, 0.82, 0.33, 1.00)
+    local accentActive = imgui.ImVec4(0.00, 0.65, 0.26, 1.00)
+
+    style.WindowRounding = 6.0
+    style.FrameRounding = 4.0
+    style.ChildRounding = 4.0
+    style.PopupRounding = 4.0
+    style.ScrollbarRounding = 4.0
+    style.WindowBorderSize = 0.0
+    style.ChildBorderSize = 0.0
+    style.PopupBorderSize = 0.0
+    style.FrameBorderSize = 0.0
+
+    colors[clr.WindowBg] = imgui.ImVec4(0.06, 0.07, 0.08, 0.98)
+    colors[clr.ChildBg] = imgui.ImVec4(0.08, 0.09, 0.10, 1.00)
+    colors[clr.Border] = imgui.ImVec4(0.00, 0.00, 0.00, 0.00)
+    colors[clr.TitleBg] = imgui.ImVec4(0.04, 0.05, 0.06, 1.00)
+    colors[clr.TitleBgActive] = imgui.ImVec4(0.07, 0.10, 0.08, 1.00)
+    colors[clr.FrameBg] = imgui.ImVec4(0.12, 0.14, 0.14, 1.00)
+    colors[clr.FrameBgHovered] = imgui.ImVec4(0.15, 0.20, 0.17, 1.00)
+    colors[clr.FrameBgActive] = imgui.ImVec4(0.17, 0.24, 0.19, 1.00)
+    colors[clr.CheckMark] = accent
+    colors[clr.SliderGrab] = accent
+    colors[clr.SliderGrabActive] = accentHover
+    colors[clr.Button] = imgui.ImVec4(0.00, 0.34, 0.14, 1.00)
+    colors[clr.ButtonHovered] = accentHover
+    colors[clr.ButtonActive] = accentActive
+    colors[clr.Header] = imgui.ImVec4(0.00, 0.30, 0.13, 0.65)
+    colors[clr.HeaderHovered] = accentHover
+    colors[clr.HeaderActive] = accentActive
+    colors[clr.Separator] = imgui.ImVec4(0.18, 0.22, 0.19, 1.00)
+    colors[clr.SeparatorHovered] = accentHover
+    colors[clr.SeparatorActive] = accentActive
+end)
+
+imgui.OnFrame(
+    function() return window[0] end,
+    function()
+        local sw, sh = getScreenResolution()
+        local window_width = 420
+        local window_height = 380
+
+        imgui.SetNextWindowPos(imgui.ImVec2(sw / 2, sh / 2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
+        imgui.SetNextWindowSize(imgui.ImVec2(window_width, window_height), imgui.Cond.FirstUseEver)
+
+        imgui.Begin("Auto Trade", window, imgui.WindowFlags.NoResize + imgui.WindowFlags.NoCollapse)
+
+        if imgui.Checkbox("Включить", ui.settings.isActivated) then cfg.settings.isActivated = ui.settings.isActivated[0] saveCFG(cfg, CONFIG_PATH) end
+        showTooltip("Главный переключатель: при открытии окна обмена скрипт сам выбирает отмеченные предметы в инвентаре и вводит их количество. Если выключен, выбор предметов не выполняется — работают только остальные опции.")
+        imgui.SameLine(0, 20)
+        if imgui.Checkbox("Принимать запросы", ui.settings.acceptTradeRequest) then cfg.settings.accept_trade_request = ui.settings.acceptTradeRequest[0] saveCFG(cfg, CONFIG_PATH) end
+        showTooltip("Автоматически принимает входящие запросы на обмен: на сообщение «предложил вам обмен предметами» скрипт отправляет /accept invtrade вместо ручного нажатия Y.")
+        imgui.SameLine(0, 20)
+        if imgui.Checkbox("Нажимать accept", ui.settings.autoPressAccept) then cfg.settings.auto_press_accept = ui.settings.autoPressAccept[0] saveCFG(cfg, CONFIG_PATH) end
+        showTooltip("Скрипт сам нажимает кнопку accept в окне обмена, когда вторая сторона согласилась, и доводит сделку до конца. Если выключено, подтверждение нужно нажимать вручную.")
+        imgui.NewLine()
+        imgui.PushItemWidth(100)
+        if imgui.InputInt("Задержка (мс)", ui.settings.delay, 50) then
+            ui.settings.delay[0] = math.max(200, math.min(2000, ui.settings.delay[0]))
+            cfg.settings.delay = ui.settings.delay[0]
+            saveCFG(cfg, CONFIG_PATH)
+        end
+        imgui.PopItemWidth()
+        imgui.NewLine()
+
+        imgui.BeginChild("tradeItems", imgui.ImVec2(-1, -1), true)
+        imgui.Columns(4, "tradeItemsColumns", false)
+        imgui.Text("Название"); imgui.SetColumnWidth(-1, 100)
+        imgui.NextColumn()
+        imgui.Text("Вкл."); imgui.SetColumnWidth(-1, 45)
+        imgui.NextColumn()
+        imgui.Text("Значение"); imgui.SetColumnWidth(-1, 130)
+        imgui.NextColumn()
+        imgui.Text("Остаток"); imgui.SetColumnWidth(-1, 130)
+        imgui.NextColumn()
+
+        for _, item in ipairs(cfg.items) do
+            local state = ui.items[item.name]
+            imgui.Separator()
+            imgui.TextUnformatted(state.label)
+            imgui.NextColumn()
+
+            if imgui.Checkbox("##item_enabled_" .. item.name, state.isSelected) then
+                item.isSelected = state.isSelected[0]
+                saveCFG(cfg, CONFIG_PATH)
+            end
+            imgui.NextColumn()
+
+            imgui.PushItemWidth(-1)
+            if imgui.InputInt("##item_amount_" .. item.name, state.amount, item.step) then
+                local amount = math.max(item.min, math.min(item.max, state.amount[0]))
+                state.amount[0] = amount
+                item.amount = amount
+                saveCFG(cfg, CONFIG_PATH)
+            end
+            imgui.PopItemWidth()
+            imgui.NextColumn()
+
+            imgui.PushItemWidth(-1)
+            if imgui.InputInt("##item_limit_" .. item.name, state.limit, 1) then
+                local limit = math.max(0, math.min(item.max, state.limit[0]))
+                state.limit[0] = limit
+                item.limit = limit
+                saveCFG(cfg, CONFIG_PATH)
+            end
+            imgui.PopItemWidth()
+            imgui.NextColumn()
+        end
+        imgui.Columns(1)
+        imgui.EndChild()
+
+        imgui.End()
+    end
+)
 
 function ev.onServerMessage(c, text)
     text = u8(text)
