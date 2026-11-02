@@ -1,8 +1,8 @@
-local version = "01.11.2026"
+local migration = "02.11.2026"
 script_author("Melvin Costra")
 script_name("Auto trade")
 script_description("Этот скрипт был создан для автоматизации процесса обмена предметами между игроками во время трейда (/itrade). Он позволяет мгновенно выполнять обмен предметами на основе параметров, заданных игроком, без необходимости ручного вмешательства.")
-script_version(version)
+script_version("v1.1.0")
 script_url("https://github.com/melvin-costra/auto-trade.git")
 
 local ev = require "samp.events"
@@ -28,18 +28,19 @@ end
 wrapToGame("sampAddChatMessage")
 wrapToGame("sampSendChat")
 
+local function nowMs() return os.clock() * 1000 end
+
+local MAX_TEXTDRAWS, POS_TOLERANCE, MAX_PAGE_SWITCHES = 2500, 0.3, 1
 local window = imgui.new.bool(false)
 local CONFIG_PATH = "moonloader/config/auto-trade.json"
-local isTradeInProgress = false
-local isSubmitInProgress = false
-local ammoValue = nil
+local state = "idle" -- "idle" | "trading" | "submitting"
+local pendingTrade = nil
 local itemsToTrade = {}
-local tradeItemToRemove = nil
 local acceptTextDrawId = nil
 local nextPageTextDrawId = nil
 local emptySlotId = 19478
 local darkSlotColor = 4280098087
-local antiflood = os.clock() * 1000
+local antiflood = nowMs()
 local isPageSwitchInProgress = false
 local pagesSwitched = 0
 local pageSwitchStartedAt = 0
@@ -47,16 +48,16 @@ local pageRenderTimeout = 1500
 local pickingCancelKey = false
 
 local cfg = {
-    version = version,
+    migration = migration,
     items = {
-        { id = 1575, name = "drugs", amount = 50, limit = 50, min = 1, max = 300, step = 25, isSelected = false },
-        { id = 347, name = "sdpistol", amount = 100, limit = 100, min = 1, max = 10000, step = 25, isSelected = true },
-        { id = 348, name = "deagle", amount = 100, limit = 100, min = 1, max = 10000, step = 25, isSelected = true },
-        { id = 349, name = "shotgun", amount = 50, limit = 50, min = 1, max = 10000, step = 25, isSelected = true },
-        { id = 353, name = "smg", amount = 200, limit = 200, min = 1, max = 10000, step = 50, isSelected = true },
-        { id = 355, name = "ak47", amount = 200, limit = 200, min = 1, max = 10000, step = 50, isSelected = true },
-        { id = 356, name = "m4", amount = 200, limit = 200, min = 1, max = 10000, step = 50, isSelected = true },
-        { id = 357, name = "rifle", amount = 50, limit = 50, min = 1, max = 10000, step = 25, isSelected = true }
+        { id = 1575, name = "drugs", label = "Drugs", amount = 50, limit = 50, min = 1, max = 300, step = 25, isSelected = false },
+        { id = 347, name = "sdpistol", label = "SDPistol", amount = 100, limit = 100, min = 1, max = 10000, step = 25, isSelected = true },
+        { id = 348, name = "deagle", label = "Deagle", amount = 100, limit = 100, min = 1, max = 10000, step = 25, isSelected = true },
+        { id = 349, name = "shotgun", label = "Shotgun", amount = 50, limit = 50, min = 1, max = 10000, step = 25, isSelected = true },
+        { id = 353, name = "smg", label = "SMG", amount = 200, limit = 200, min = 1, max = 10000, step = 50, isSelected = true },
+        { id = 355, name = "ak47", label = "AK47", amount = 200, limit = 200, min = 1, max = 10000, step = 50, isSelected = true },
+        { id = 356, name = "m4", label = "M4", amount = 200, limit = 200, min = 1, max = 10000, step = 50, isSelected = true },
+        { id = 357, name = "rifle", label = "Rifle", amount = 50, limit = 50, min = 1, max = 10000, step = 25, isSelected = true }
     },
     settings = {
         isActivated = false,
@@ -74,16 +75,7 @@ local ui = {
         autoPressAccept = imgui.new.bool(cfg.settings.auto_press_accept),
         delay = imgui.new.int(cfg.settings.delay)
     },
-    items = {
-        drugs     = { label = "Drugs" },
-        sdpistol  = { label = "SDPistol" },
-        deagle    = { label = "Deagle" },
-        shotgun   = { label = "Shotgun" },
-        smg       = { label = "SMG" },
-        ak47      = { label = "AK47" },
-        m4        = { label = "M4" },
-        rifle     = { label = "Rifle" }
-    }
+    items = {}
 }
 
 local slots_inventory = {
@@ -130,7 +122,7 @@ function loadCFG()
         if file then
             local fileCFG = decodeJson(file:read('*a'))
             file:close()
-            if fileCFG.version == cfg.version then
+            if fileCFG and fileCFG.migration == cfg.migration then
                 cfg = fileCFG
             else
                 saveCFG(cfg, CONFIG_PATH)
@@ -143,13 +135,13 @@ function loadCFG()
     ui.settings.autoPressAccept[0] = cfg.settings.auto_press_accept
     ui.settings.delay[0] = cfg.settings.delay
 
+    ui.items = {}
     for _, item in ipairs(cfg.items) do
-        local state = ui.items[item.name]
-        if state then
-            state.isSelected = imgui.new.bool(item.isSelected)
-            state.amount = imgui.new.int(item.amount)
-            state.limit = imgui.new.int(item.limit)
-        end
+        ui.items[item.name] = {
+            isSelected = imgui.new.bool(item.isSelected),
+            amount = imgui.new.int(item.amount),
+            limit = imgui.new.int(item.limit)
+        }
     end
 end
 
@@ -179,18 +171,18 @@ function main()
                     end
                 end
             end
-        elseif (isTradeInProgress or isSubmitInProgress) and isKeyJustPressed(cfg.settings.cancel_key) then
-            setInitialValues()
+        elseif state ~= "idle" and isKeyJustPressed(cfg.settings.cancel_key) and not sampIsChatInputActive() and not sampIsDialogActive() then
+            resetState()
         end
         if acceptTextDrawId and not sampTextdrawIsExists(acceptTextDrawId) then
             acceptTextDrawId = nil
         end
-        if (isTradeInProgress or isSubmitInProgress) and not acceptTextDrawId then
-            setInitialValues()
+        if state ~= "idle" and not acceptTextDrawId then
+            resetState()
         end
-        if isTradeInProgress then
+        if state == "trading" then
             autoTrade()
-        elseif isSubmitInProgress then
+        elseif state == "submitting" then
             sendSubmit()
         end
         if isKeyDown(keys.VK_RBUTTON) and isKeyJustPressed(keys.VK_Q) then
@@ -219,7 +211,7 @@ function isQuantityTextDrawAtPos(textDrawId, posX, posY)
     end
 
     local x, y = sampTextdrawGetPos(textDrawId)
-    if getDistanceBetweenCoords2d(x, y, posX, posY) > 0.3 then
+    if getDistanceBetweenCoords2d(x, y, posX, posY) > POS_TOLERANCE then
         return false
     end
 
@@ -227,23 +219,37 @@ function isQuantityTextDrawAtPos(textDrawId, posX, posY)
 end
 
 function findTextDrawAtPos(posX, posY)
-    for i = 0, 2500 do
+    for i = 0, MAX_TEXTDRAWS do
         if isQuantityTextDrawAtPos(i, posX, posY) then
             return i
         end
     end
 end
 
+function removeItemToTrade(item)
+    for k, v in ipairs(itemsToTrade) do
+        if v == item then
+            table.remove(itemsToTrade, k)
+            return
+        end
+    end
+end
+
+-- Проверяет слот по координатам и пытается кликнуть по подходящему предмету.
+-- Возвращает:
+--   "clicked" - кликнули по предмету, нужно ждать диалога с количеством
+--   "empty"   - слот пустой (или выделен), дальше предметов на странице нет
+--   "skip"    - в слоте нет нужного предмета, идём к следующему слоту
 function tradeInventoryItem(posX, posY)
-    for i = 0, 2500 do
+    for i = 0, MAX_TEXTDRAWS do
         if sampTextdrawIsExists(i) then
             local x, y = sampTextdrawGetPos(i)
             local dist = getDistanceBetweenCoords2d(x, y, posX, posY)
-            if dist <= 0.3 then
+            if dist <= POS_TOLERANCE then
                 local model = select(1, sampTextdrawGetModelRotationZoomVehColor(i))
                 local _, outlineColor = sampTextdrawGetOutlineColor(i)
                 if model == emptySlotId or outlineColor ~= darkSlotColor then
-                    return false, true
+                    return "empty"
                 end
                 for k, item in ipairs(itemsToTrade) do
                     if model == item.id then
@@ -259,69 +265,66 @@ function tradeInventoryItem(posX, posY)
                             if itemAmount <= item.limit then
                                 printMessage('Достигнут лимит для {00FF66}' .. item.name)
                                 table.remove(itemsToTrade, k)
-                                return false
+                                return "skip"
                             elseif itemAmount - item.amount < item.limit then
                                 amountToTrade = itemAmount - item.limit
                             else
                                 amountToTrade = item.amount
                             end
-                            ammoValue = amountToTrade
-                            tradeItemToRemove = k
+                            pendingTrade = { item = item, amount = amountToTrade }
                             clickTextdraw(i)
-                            return true
+                            return "clicked"
                         end
                     end
                 end
             end
         end
     end
+    return "skip"
 end
 
 function autoTrade()
     if isPageSwitchInProgress then
-        if os.clock() * 1000 - pageSwitchStartedAt >= pageRenderTimeout then
+        if nowMs() - pageSwitchStartedAt >= pageRenderTimeout then
             finishPageRender()
         end
         return
     end
 
     if #itemsToTrade > 0 then
-        if os.clock() * 1000 - antiflood < cfg.settings.delay then return end
+        if nowMs() - antiflood < cfg.settings.delay then return end
         local isEmptySlot = false
         for _, pos in ipairs(slots_inventory) do
-            local clicked, emptySlot = tradeInventoryItem(pos[1], pos[2])
-            if clicked then
+            local result = tradeInventoryItem(pos[1], pos[2])
+            if result == "clicked" then
                 return
             end
-            if emptySlot then
+            if result == "empty" then
                 isEmptySlot = true
                 break
             end
         end
-        if #itemsToTrade > 0 and not isEmptySlot and pagesSwitched < 1
+        if #itemsToTrade > 0 and not isEmptySlot and pagesSwitched < MAX_PAGE_SWITCHES
             and nextPageTextDrawId and sampTextdrawIsExists(nextPageTextDrawId) then
             switchToNextPage()
             return
         end
         if #itemsToTrade > 0 then
-            local missing_items = ''
+            local missingItems = {}
             for _, item in ipairs(itemsToTrade) do
-                missing_items = missing_items .. item.name .. ' | '
+                missingItems[#missingItems + 1] = item.name
             end
-            printMessage('Отсутствующие предметы: {00FF66}' .. missing_items:sub(0, -4))
+            printMessage('Отсутствующие предметы: {00FF66}' .. table.concat(missingItems, ' | '))
         end
-        itemsToTrade = {}
-        isTradeInProgress = false
-        isSubmitInProgress = true
-    else
-        isTradeInProgress = false
-        isSubmitInProgress = true
     end
+
+    itemsToTrade = {}
+    state = "submitting"
 end
 
 function switchToNextPage()
     isPageSwitchInProgress = true
-    pageSwitchStartedAt = os.clock() * 1000
+    pageSwitchStartedAt = nowMs()
     clickTextdraw(nextPageTextDrawId)
 end
 
@@ -332,32 +335,30 @@ end
 
 function getInventorySlotIndex(posX, posY)
     for index, pos in ipairs(slots_inventory) do
-        if getDistanceBetweenCoords2d(posX, posY, pos[1], pos[2]) <= 0.3 then
+        if getDistanceBetweenCoords2d(posX, posY, pos[1], pos[2]) <= POS_TOLERANCE then
             return index
         end
     end
 end
 
 function sendSubmit()
-    if os.clock() * 1000 - antiflood < cfg.settings.delay then return end
+    if nowMs() - antiflood < cfg.settings.delay then return end
     if cfg.settings.auto_press_accept and acceptTextDrawId and sampTextdrawIsExists(acceptTextDrawId) then
         clickTextdraw(acceptTextDrawId)
     else
-        setInitialValues()
+        resetState()
     end
 end
 
 function clickTextdraw(textdrawId)
     sampSendClickTextdraw(textdrawId)
-    antiflood = os.clock() * 1000
+    antiflood = nowMs()
 end
 
-function setInitialValues()
+function resetState()
     itemsToTrade = {}
-    isTradeInProgress = false
-    isSubmitInProgress = false
-    ammoValue = nil
-    tradeItemToRemove = nil
+    state = "idle"
+    pendingTrade = nil
     isPageSwitchInProgress = false
     pagesSwitched = 0
     pageSwitchStartedAt = 0
@@ -472,21 +473,21 @@ imgui.OnFrame(
         imgui.NextColumn()
 
         for _, item in ipairs(cfg.items) do
-            local state = ui.items[item.name]
+            local itemUi = ui.items[item.name]
             imgui.Separator()
-            imgui.TextUnformatted(state.label)
+            imgui.TextUnformatted(item.label)
             imgui.NextColumn()
 
-            if imgui.Checkbox("##item_enabled_" .. item.name, state.isSelected) then
-                item.isSelected = state.isSelected[0]
+            if imgui.Checkbox("##item_enabled_" .. item.name, itemUi.isSelected) then
+                item.isSelected = itemUi.isSelected[0]
                 saveCFG(cfg, CONFIG_PATH)
             end
             imgui.NextColumn()
 
             imgui.PushItemWidth(-1)
-            if imgui.InputInt("##item_amount_" .. item.name, state.amount, item.step) then
-                local amount = math.max(item.min, math.min(item.max, state.amount[0]))
-                state.amount[0] = amount
+            if imgui.InputInt("##item_amount_" .. item.name, itemUi.amount, item.step) then
+                local amount = math.max(item.min, math.min(item.max, itemUi.amount[0]))
+                itemUi.amount[0] = amount
                 item.amount = amount
                 saveCFG(cfg, CONFIG_PATH)
             end
@@ -494,9 +495,9 @@ imgui.OnFrame(
             imgui.NextColumn()
 
             imgui.PushItemWidth(-1)
-            if imgui.InputInt("##item_limit_" .. item.name, state.limit, item.step) then
-                local limit = math.max(0, math.min(item.max, state.limit[0]))
-                state.limit[0] = limit
+            if imgui.InputInt("##item_limit_" .. item.name, itemUi.limit, item.step) then
+                local limit = math.max(0, math.min(item.max, itemUi.limit[0]))
+                itemUi.limit[0] = limit
                 item.limit = limit
                 saveCFG(cfg, CONFIG_PATH)
             end
@@ -512,14 +513,14 @@ imgui.OnFrame(
 
 function ev.onServerMessage(c, text)
     text = u8(text)
-    if (isTradeInProgress and text:find("^ У игрока слишком маленький уровень для обмена оружием")) or (isSubmitInProgress and text:find("^ Обмен не может быть пустым")) then
-        setInitialValues()
+    if (state == "trading" and text:find("^ У игрока слишком маленький уровень для обмена оружием")) or (state == "submitting" and text:find("^ Обмен не может быть пустым")) then
+        resetState()
     end
     if cfg.settings.accept_trade_request and text:find("^ .+ предложил вам обмен предметами {FFFFFF}%(%( Нажмите Y/N для принятия/отмены %)%)") then
         sampSendChat("/accept invtrade")
     end
     if cfg.settings.auto_press_accept and text:find("^ .+ согласился на обмен, нажмите accept для принятия") then
-        isSubmitInProgress = true
+        state = "submitting"
     end
 end
 
@@ -533,12 +534,14 @@ function ev.onShowTextDraw(id, data)
     if data.text:find("accept") and data.position.x == 223 and data.position.y == 315.5 then
         acceptTextDrawId = id
         if cfg.settings.isActivated then
+            itemsToTrade = {}
             for _, item in ipairs(cfg.items) do
                 if item.isSelected then
                     table.insert(itemsToTrade, { id = item.id, name = item.name, amount = item.amount, limit = item.limit })
                 end
             end
-            isTradeInProgress = true
+            antiflood = nowMs()
+            state = "trading"
         end
     end
 end
@@ -546,15 +549,15 @@ end
 function ev.onShowDialog(id, style, title, button1, button2, text)
     title = u8(title)
     text = u8(text)
-    if ammoValue ~= nil and style == 1 and text:find("Введите количество:") then
-        table.remove(itemsToTrade, tradeItemToRemove)
-        sampSendDialogResponse(id, 1, 1, ammoValue)
-        ammoValue = nil
+    if pendingTrade and style == 1 and text:find("Введите количество:") then
+        removeItemToTrade(pendingTrade.item)
+        sampSendDialogResponse(id, 1, 1, pendingTrade.amount)
+        pendingTrade = nil
         return false
     end
-    if isSubmitInProgress and style == 0 and title:find("Обмен") then
+    if state == "submitting" and style == 0 and title:find("Обмен") then
         sampSendDialogResponse(id, 1, 1, -1)
-        setInitialValues()
+        resetState()
         return false
     end
 end
